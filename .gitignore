@@ -2,3 +2,6 @@ venv*/
 .vscode/
 *.epub
 screen*.png
+
+.DS_Store
+posts.json
