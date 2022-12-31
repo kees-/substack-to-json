@@ -4,4 +4,4 @@ venv*/
 screen*.png
 
 .DS_Store
-posts.json
+*.json

@@ -14,4 +14,8 @@ The original script created an EPUB. This fork uses the same techniques but is i
 pip install -r requirements
 python main.py [Substack_URL]
 ```
-Substack_URL must point to the main page eg. [https://forcoloredgirlswhotech.substack.com/]()
+Substack_URL must point to the main page eg. [https://worm.substack.com/]()
+
+## BONUS!!
+
+What if it was more than substack? Check other branches on this repo to see any platforms I've adapted this script to support.
