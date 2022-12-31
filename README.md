@@ -1,17 +1,14 @@
-# substack-to-json
+# spike-to-json
 
-Get the metadata and content as an HTML string of every post on a substack publication.
+Get the metadata and content as an HTML string of every post on a [SPIKE](https://www.spikeartmagazine.com/) publication.
 
-The script simulates a web browser and uses element searches to find everything relevant. It is updated and working as of **2022-11-25**.
+The script simulates a web browser and uses element searches to find everything relevant. It is updated and working as of **2022-12-30**.
 
-In the future, many of the `XPATH` and related queries may need to be updated as substack's DOM structure changes. Look in `parse_archive()`, `parse_post()`, and `sign-in()` if updating yourself. I never tried parsing a paywalled blog, so this feature may not work currently.
-
-## Note
-The original script created an EPUB. This fork uses the same techniques but is intended to be an intermediate processor in the face of lacking a substack API. It skips the final rendering and outputs all blog post data to a JSON file specified in [main.py](main.py) `OUTFILE_NAME`.
+In the future, many of the DOM queries may need to be updated as SPIKE's DOM structure changes. Look in `parse_archive()` and `parse_post()` if updating yourself.
 
 ## Usage:
 ```sh
 pip install -r requirements
-python main.py [Substack_URL]
+python main.py [author_slug]
 ```
-Substack_URL must point to the main page eg. [https://forcoloredgirlswhotech.substack.com/]()
+`author_slug` must point to the correct portion of the URL eg. `dean-kissick-0` from [spikeartmagazine.com/?q=contributors/dean-kissick-0](https://www.spikeartmagazine.com/?q=contributors/dean-kissick-0)

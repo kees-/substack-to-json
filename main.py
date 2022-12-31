@@ -9,14 +9,11 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+BASE_URL = "https://www.spikeartmagazine.com/?q=contributors/"
 POST_RETRY_LIMIT = 4
 TIMEOUT_SECONDS = 15
 OUTFILE_NAME = "posts.json"
 FILTER = None # FILTER = "^\s*#" # Must be a valid regexp
-ALLOW_PAYWALLED = True
-PAYWALLED_ONLY = False
-EMAIL = os.environ.get("SUBSTACK_EMAIL")
-PASSWORD = os.environ.get("SUBSTACK_PASS")
 CHROME_BINARY = "/Applications/Chromium.app/Contents/MacOS/Chromium"
 SKIP_EXISTING = True
 
@@ -37,9 +34,7 @@ driver = webdriver.Chrome(options=options)
 
 # Source: https://stackoverflow.com/a/16464305
 class AnyEC:
-  """ Use with WebDriverWait to combine expected_conditions
-  in an OR.
-  """
+  """ Use with WebDriverWait to combine expected_conditions in an OR. """
   def __init__(self, *args):
       self.ecs = args
   def __call__(self, driver):
@@ -65,99 +60,50 @@ def get_filename(s):
     s = str(s).strip().replace(' ', '_')
     return re.sub(r'(?u)[^-\w.]', '', s)
 
-def parse_archive(url, limit=None, filter=None):
-    driver.get(url + '/archive?sort=new')
-    blog_name = driver.find_element(By.XPATH, '//a[@class="navbar-title-link"]').text
-    last_height = driver.execute_script("return document.body.scrollHeight")
-    print("Scrolling down:")
-    while True:
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.5)
-        WebDriverWait(driver, 30).until(
-            EC.invisibility_of_element_located((By.CLASS_NAME, "post-preview-silhouette"))
-        )
-        recent_height = driver.execute_script("return document.body.scrollHeight")
-        print(f"  | Previous: {last_height}, Current: {recent_height}")
-        if recent_height == last_height: # TEMP (or recent_height > 5000)
-            break
-        last_height = recent_height
+def parse_archive(contributor, limit=None, filter=None):
+    driver.get(BASE_URL + contributor)
+    author = driver.find_element(By.CSS_SELECTOR, 'h1.page-header').text
 
-    posts = driver.find_elements(By.CLASS_NAME, "post-preview")
+    posts = driver.find_elements(By.CSS_SELECTOR, '#page-content div.node-article:not(:has(.field-name-print-article-extra))')
     posts_parsed = []
     for post in posts[0:limit]:
-        url = post.find_element(By.CLASS_NAME, "post-preview-title").get_attribute('href')
-        title = post.find_element(By.CLASS_NAME, "post-preview-title").text
+        url = post.find_element(By.CSS_SELECTOR, '.article-title a').get_attribute('href')
+        title = post.find_element(By.CSS_SELECTOR, ".article-title a").text
+        if post.find_element(By.CSS_SELECTOR, '#article-category').text == "OFFLINE ARTICLE":
+            continue
         if filter and not re.match(filter, title):
             continue
-        try:
-            post.find_element(By.CLASS_NAME, "audience-lock")
-            paywalled = True
-        except NoSuchElementException:
-            paywalled = False
-        posts_parsed.append({'url': url, 'paywalled': paywalled, 'title': title})
-    return {'blog_name': blog_name, 'posts': posts_parsed}
+        posts_parsed.append({'url': url, 'title': title})
+    return {'blog_name': author, 'posts': posts_parsed}
 
 def parse_post(url):
     print(f'Parsing {url}')
     driver.get(url)
     post = WebDriverWait(driver, TIMEOUT_SECONDS).until(
-        AnyEC(          
-            EC.presence_of_element_located((By.CLASS_NAME, "single-post")),
-            EC.presence_of_element_located((By.CLASS_NAME, "comments-page"))
-        )
+        EC.presence_of_element_located((By.TAG_NAME, "html"))
     )
 
-    try:
-        driver.find_element(By.XPATH, '//div[@class="single-post"]//div[contains(@class,"paywall")]')
-        paywalled = True
-    except NoSuchElementException:
-        paywalled = False
-
-    title = post.find_element(By.CLASS_NAME, "post-title").text
-    try:
-        subtitle = post.find_element(By.CLASS_NAME, "subtitle").text
-    except NoSuchElementException:
-        subtitle = ""
-    datetime = post.find_element(By.TAG_NAME, "time").get_attribute('datetime')
-    try:
-        like_count = post.find_element(By.XPATH, '//a[contains(@class, "post-ufi-button") and contains(@class, "has-label")]//div[@class="label"]').text
-    except NoSuchElementException:
-        like_count = 0
-    body = post.find_element(By.CLASS_NAME, "body")
+    title = post.find_element(By.XPATH, '//meta[@property="og:title"]').get_attribute('content')
+    subtitle = post.find_element(By.XPATH, '//meta[@name="description"]').get_attribute('content')
+    datetime = post.find_element(By.XPATH, '//meta[@property="article:published_time"]').get_attribute('content')
+    body = post.find_element(By.CSS_SELECTOR, ".field-name-body .field-item")
     text_list = [
         e.get_attribute('outerHTML') 
         for e 
-        in body.find_elements(By.XPATH, './*[not(contains(@class,"subscribe-widget"))]')
+        in body.find_elements(By.XPATH, "*")
     ]
     text_html = '\n'.join(text_list)
-    print(f'  | title:     {title[:50]}{["", "(...)"][len(title) > 40]}\n  | paywalled: {paywalled}\n  | likes:     {like_count}')
+    print(f'  | title:    {title[:50]}{["", "(...)"][len(title) > 40]}\n  | datetime: {datetime}')
     return {
       'url': url,
       'title': title,
       'subtitle': subtitle,
       'date': datetime,
-      'like_count': like_count,
       'text_html': text_html,
-      'paywalled': paywalled
     }
 
-def sign_in(email, password=None, login_link=None):
-    print(f"signing for email: {email}")
-    driver.get("https://substack.com/sign-in")
-    driver.find_element(By.CLASS_NAME, "substack-login__login-option").click()
-    driver.find_element(By.XPATH, '//input[@name="email"]').send_keys(email)
-    driver.find_element(By.XPATH, '//input[@name="password"]').send_keys(password)
-    driver.find_element(By.CLASS_NAME, "substack-login__go-button").click()
-    WebDriverWait(driver, 30).until(
-        EC.presence_of_element_located((By.CLASS_NAME, 'homepage-nav-user-indicator')) 
-    )
-    print("signed in")
-
-def main(substack_url):
-    if EMAIL and PASSWORD:
-        sign_in(EMAIL, PASSWORD)
-    archive = parse_archive(substack_url, limit=None, filter=FILTER)
-
+def main(author_slug):
+    archive = parse_archive(author_slug, limit=None, filter=FILTER)
 
     print_separator()
     print(f"Total posts found: {len(archive['posts'])}")
@@ -179,8 +125,7 @@ def main(substack_url):
         j = 0
         while True:
             try:
-                if ALLOW_PAYWALLED or post['paywalled'] == PAYWALLED_ONLY:
-                    p = parse_post(post['url'])
+                p = parse_post(post['url'])
                 break
             except TimeoutException:
                 j += 1
@@ -189,7 +134,7 @@ def main(substack_url):
                     break
                 print(f'  Retrying parse ({j + 1} of {POST_RETRY_LIMIT} times)')
         if p is None:
-            not_posts.append(post["url"])
+            not_posts.append(post['url'])
             continue
         agg.append(p)
         write_json(OUTFILE_NAME, agg)
